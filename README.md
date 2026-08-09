@@ -107,5 +107,3 @@ When you update hooks or steering files in this repo:
 
 ## Designed By
 **Mahima — Senior Software Engineer, Southwest Airlines AI Engineering**
-
-*Part of the Southwest Airlines Developer Intelligence Initiative*
