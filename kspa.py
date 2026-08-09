@@ -5,7 +5,6 @@
 # Core Python Agent
 # ─────────────────────────────────────────────
 
-import os
 import sys
 import json
 import shutil
@@ -15,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 # ─────────────────────────────────────────────
-# CONFIGURATION — Update these for Southwest
+# CONFIGURATION
 # ─────────────────────────────────────────────
 
 CENTRAL_REPO_SSH   = "git@github.com:MahimaMohana/Kiro-Spec-Provisioning-Agent.git"
@@ -27,6 +26,13 @@ STEERING_SOURCE    = CENTRAL_REPO_LOCAL / "steering"
 
 KIRO_HOOKS_DEST    = ".kiro/hooks"
 KIRO_STEERING_DEST = ".kiro/steering"
+
+# Maps project type to the subfolder name used in hooks/ and steering/
+LANGUAGE_SUBFOLDERS = {
+    "java":   "java",
+    "python": "python",
+    "node":   "node",
+}
 
 # ─────────────────────────────────────────────
 # UTILITIES
@@ -45,14 +51,13 @@ def print_error(message):
     print(f"  ❌  {message}")
 
 # ─────────────────────────────────────────────
-# STEP 1 — Pull latest standards from GitLab
+# STEP 1 — Pull latest standards from GitHub
 # ─────────────────────────────────────────────
 
 def pull_latest_standards():
     print_step("📡", "Pulling latest standards from central repo...")
 
     if CENTRAL_REPO_LOCAL.exists():
-        # Already cloned — just pull latest
         result = subprocess.run(
             ["git", "-C", str(CENTRAL_REPO_LOCAL), "pull", "--quiet"],
             capture_output=True, text=True
@@ -60,7 +65,6 @@ def pull_latest_standards():
         if result.returncode != 0:
             print_warning("Could not pull latest — using cached version.")
     else:
-        # First time — clone the repo
         CENTRAL_REPO_LOCAL.parent.mkdir(parents=True, exist_ok=True)
         result = subprocess.run(
             ["git", "clone", "--quiet", CENTRAL_REPO_SSH, str(CENTRAL_REPO_LOCAL)],
@@ -68,7 +72,7 @@ def pull_latest_standards():
         )
         if result.returncode != 0:
             print_error(f"Could not clone central repo: {result.stderr}")
-            print_error("Check your GitLab SSH access and try again.")
+            print_error("Check your GitHub SSH access and try again.")
             sys.exit(1)
 
     print_step("✓", "Standards cache is up to date.")
@@ -86,43 +90,70 @@ def get_standards_version():
     return "unknown"
 
 # ─────────────────────────────────────────────
-# STEP 3 — Check what already exists in repo
+# STEP 3 — Detect project type from repo root
 # ─────────────────────────────────────────────
 
-def get_existing_files(repo_path, relative_dir):
-    target = Path(repo_path) / relative_dir
-    if not target.exists():
-        return set()
-    return {f.name for f in target.iterdir() if f.is_file()}
+def detect_project_type(repo_path: Path) -> str:
+    """Return 'java', 'python', 'node', or raise if unrecognised."""
+    if (repo_path / "pom.xml").exists() or \
+       (repo_path / "build.gradle").exists() or \
+       (repo_path / "build.gradle.kts").exists():
+        return "java"
+
+    if (repo_path / "requirements.txt").exists() or \
+       (repo_path / "pyproject.toml").exists() or \
+       (repo_path / "setup.py").exists() or \
+       (repo_path / "setup.cfg").exists():
+        return "python"
+
+    if (repo_path / "package.json").exists():
+        return "node"
+
+    return "unknown"
 
 # ─────────────────────────────────────────────
-# STEP 4 — Inject files (smart merge)
+# STEP 4 — Inject files (language-scoped, flat)
 # ─────────────────────────────────────────────
 
-def inject_files(repo_path, source_dir, dest_relative, label):
+def inject_files(repo_path: Path, source_dir: Path, dest_relative: str, label: str):
+    """
+    Copy files from source_dir directly into dest_relative (flat).
+    source_dir should already be the language-specific subfolder,
+    e.g. hooks/java/ or steering/java/ — no subdirectory structure
+    is created inside the destination.
+    """
     injected = []
     skipped  = []
 
-    dest_path = Path(repo_path) / dest_relative
-    dest_path.mkdir(parents=True, exist_ok=True)
+    dest_path = repo_path / dest_relative
 
     if not source_dir.exists():
-        print_warning(f"No {label} found in central repo — skipping.")
+        print_warning(f"No {label} source folder found at {source_dir} — skipping.")
         return injected, skipped
 
-    existing = get_existing_files(repo_path, dest_relative)
+    # Collect only files (skip .gitkeep and other dot-files)
+    source_files = sorted(
+        f for f in source_dir.iterdir()
+        if f.is_file() and not f.name.startswith(".")
+    )
 
-    for source_file in sorted(source_dir.iterdir()):
-        if not source_file.is_file():
-            continue
+    if not source_files:
+        print_warning(f"No {label} files found in {source_dir} — skipping.")
+        return injected, skipped
 
-        if source_file.name in existing:
-            # File already exists — do NOT overwrite
+    # Only create the destination folder if there are real files to inject
+    if not dest_path.exists():
+        dest_path.mkdir(parents=True, exist_ok=True)
+        print_step("📁", f"Created folder: {dest_relative}")
+
+    for source_file in source_files:
+        target_file = dest_path / source_file.name
+
+        if target_file.exists():
             skipped.append(source_file.name)
             print_step("⏭️ ", f"Skipped {label}: {source_file.name} (already exists)")
         else:
-            # File doesn't exist — inject it
-            shutil.copy2(source_file, dest_path / source_file.name)
+            shutil.copy2(source_file, target_file)
             injected.append(source_file.name)
             print_step("💉", f"Injected {label}: {source_file.name}")
 
@@ -132,13 +163,12 @@ def inject_files(repo_path, source_dir, dest_relative, label):
 # STEP 5 — Write injection log
 # ─────────────────────────────────────────────
 
-def write_log(repo_path, version, hooks_injected, hooks_skipped,
+def write_log(repo_path, version, project_type, hooks_injected, hooks_skipped,
               steering_injected, steering_skipped):
 
-    log_path = Path(repo_path) / ".kiro" / LOG_FILE_NAME
+    log_path = repo_path / ".kiro" / LOG_FILE_NAME
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Read existing log if present
     history = []
     if log_path.exists():
         with open(log_path) as f:
@@ -148,10 +178,10 @@ def write_log(repo_path, version, hooks_injected, hooks_skipped,
             except Exception:
                 history = []
 
-    # Add new entry
     entry = {
         "timestamp":         datetime.now().isoformat(),
         "standards_version": version,
+        "project_type":      project_type,
         "hooks_injected":    hooks_injected,
         "hooks_skipped":     hooks_skipped,
         "steering_injected": steering_injected,
@@ -174,7 +204,7 @@ def write_log(repo_path, version, hooks_injected, hooks_skipped,
 # STEP 6 — Print summary
 # ─────────────────────────────────────────────
 
-def print_summary(version, hooks_injected, hooks_skipped,
+def print_summary(version, project_type, hooks_injected, hooks_skipped,
                   steering_injected, steering_skipped):
 
     total_injected = len(hooks_injected) + len(steering_injected)
@@ -185,13 +215,14 @@ def print_summary(version, hooks_injected, hooks_skipped,
     print("  │         KSPA Injection Summary           │")
     print("  ├─────────────────────────────────────────┤")
     print(f"  │  Standards version : {version:<20} │")
+    print(f"  │  Project type      : {project_type:<20} │")
     print(f"  │  Hooks injected    : {len(hooks_injected):<20} │")
     print(f"  │  Steering injected : {len(steering_injected):<20} │")
     print(f"  │  Files skipped     : {total_skipped:<20} │")
     print("  └─────────────────────────────────────────┘")
 
     if total_injected > 0:
-        print_success(f"Kiro standards provisioned! Open Kiro — you're ready to go.")
+        print_success("Kiro standards provisioned! Open Kiro — you're ready to go.")
     else:
         print_step("ℹ️ ", "All standards already present — no changes made.")
 
@@ -217,28 +248,37 @@ def main():
     version = get_standards_version()
     print_step("📦", f"Standards version: {version}")
 
-    # Step 3 — Inject hooks
+    # Step 3 — Detect project type
+    project_type = detect_project_type(repo_path)
+    if project_type == "unknown":
+        print_warning("Could not detect project type — no pom.xml, package.json, or requirements.txt found. Skipping injection.")
+        sys.exit(0)
+
+    lang_folder = LANGUAGE_SUBFOLDERS[project_type]
+    print_step("🔍", f"Detected project type: {project_type} → injecting from '{lang_folder}/' subfolder only")
+
+    # Step 4 — Inject hooks from language subfolder only
     print_step("🔧", "Checking hooks...")
     hooks_injected, hooks_skipped = inject_files(
-        repo_path, HOOKS_SOURCE, KIRO_HOOKS_DEST, "hook"
+        repo_path, HOOKS_SOURCE / lang_folder, KIRO_HOOKS_DEST, "hook"
     )
 
-    # Step 4 — Inject steering files
+    # Step 5 — Inject steering files from language subfolder only
     print_step("🧭", "Checking steering files...")
     steering_injected, steering_skipped = inject_files(
-        repo_path, STEERING_SOURCE, KIRO_STEERING_DEST, "steering"
+        repo_path, STEERING_SOURCE / lang_folder, KIRO_STEERING_DEST, "steering"
     )
 
-    # Step 5 — Write log
+    # Step 6 — Write log
     write_log(
-        repo_path, version,
+        repo_path, version, project_type,
         hooks_injected, hooks_skipped,
         steering_injected, steering_skipped
     )
 
-    # Step 6 — Print summary
+    # Step 7 — Print summary
     print_summary(
-        version,
+        version, project_type,
         hooks_injected, hooks_skipped,
         steering_injected, steering_skipped
     )
