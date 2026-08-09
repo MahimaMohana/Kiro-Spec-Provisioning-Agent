@@ -1,0 +1,18 @@
+{
+  "version": "1.0.0",
+  "released": "2026-05-10",
+  "released_by": "Mahima",
+  "description": "Initial KSPA standards release",
+  "breaking_changes": false,
+  "hooks": [
+    "unit-test-gen.md",
+    "changelog.md",
+    "impact-analysis.md",
+    "readme-update.md",
+    "sonarqube-healing.md"
+  ],
+  "steering": [
+    "coding-standards.md",
+    "spec-integrity.md"
+  ]
+}

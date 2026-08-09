@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Impact Analysis Post Task",
+      "trigger": "PostTaskExec",
+      "description": "After a spec task completes, analyzes the impact of changes made during the task — identifying affected callers, API contract changes, database/schema changes, security implications, and test coverage gaps.",
+      "action": {
+        "type": "agent",
+        "prompt": "A spec task just completed. Perform an impact analysis of the changes made during this task.\n\n1. **Identify changed files**: Run `git diff --name-only` and `git diff --name-only --cached` to find all files modified or created during this task.\n\n2. **Analyze each changed file** for the following impacts:\n   - **API/Interface changes**: Did any public method signatures, REST endpoints, or interfaces change? If so, identify all callers or consumers of those APIs that may be broken or need updating.\n   - **Data model/schema changes**: Were any entity classes, database schemas, or DTOs modified? If so, flag potential migration needs, serialization issues, or downstream consumers affected.\n   - **Configuration changes**: Were any config files, properties, or environment variables added or changed? Flag anything that requires deployment-time action.\n   - **Security implications**: Were authentication, authorization, or input validation logic touched? Summarize the security impact.\n   - **Test coverage gaps**: List any changed classes or methods that lack corresponding test coverage. Point to specific untested code paths.\n   - **Cross-cutting concerns**: Were any shared utilities, base classes, or common components modified that could have a wide blast radius?\n\n3. **Summarize the impact** in a concise report:\n   - What changed and why it matters\n   - Files or components at risk due to these changes\n   - Recommended follow-up actions (e.g., update callers, write tests, add migration script)\n\nFocus only on the files changed in this task. Do not flag pre-existing issues unrelated to this task's changes."
+      }
+    }
+  ]
+}

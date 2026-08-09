@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Fix Sonar Issues Post Task",
+      "trigger": "PostTaskExec",
+      "description": "After a spec task completes, reads SonarQube analysis problems from the IDE Problems panel for any modified Java files and automatically fixes the identified issues (unused imports, empty methods, collapsible ifs, generic exceptions, etc.).",
+      "action": {
+        "type": "agent",
+        "prompt": "A spec task just completed. First, use 'git diff --name-only' and 'git diff --name-only --cached' to identify ONLY the Java files that were newly created or modified during this task. Do NOT check or fix any pre-existing files that were not touched by this task. For each newly created or modified Java file, run getDiagnostics to check for SonarQube / static analysis issues. For each file with problems, read the file, understand the issues reported (such as unused imports, unused fields, empty method bodies, collapsible if statements, generic exceptions, boolean literal returns, duplicated strings, unused parameters, missing private constructors on utility classes, etc.), and fix them in place. After fixing, re-run getDiagnostics to confirm the issues are resolved. Only fix Sonar-style code quality issues — do not change business logic or functionality. Ignore any issues in files that were not part of this task's changes."
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# ─────────────────────────────────────────────
+# KSPA — Kiro Standards Provisioning Agent
+# Git post-checkout hook (Mac + Windows/Git Bash)
+# Fires every time a developer checks out a branch
+# ─────────────────────────────────────────────
+
+# Only trigger on branch checkout (not file checkout)
+CHECKOUT_TYPE=$3
+if [ "$CHECKOUT_TYPE" != "1" ]; then
+  exit 0
+fi
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# Detect Java project
+if [ -f "$REPO_ROOT/pom.xml" ] || \
+   [ -f "$REPO_ROOT/build.gradle" ] || \
+   [ -f "$REPO_ROOT/build.gradle.kts" ]; then
+
+  echo ""
+  echo "╔═══════════════════════════════════════════╗"
+  echo "║   KSPA — Kiro Standards Provisioning      ║"
+  echo "║   Java project detected. Syncing...       ║"
+  echo "╚═══════════════════════════════════════════╝"
+  echo ""
+
+  # Run the Python agent
+  python3 "$HOME/.kspa/kspa.py" --repo "$REPO_ROOT"
+
+else
+  echo "ℹ️  KSPA: Not a Java project — skipping."
+fi
