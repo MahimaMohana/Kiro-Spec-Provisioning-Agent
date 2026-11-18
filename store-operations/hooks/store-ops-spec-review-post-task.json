@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Store Ops Spec Review Post Task",
+      "trigger": "PostTaskExec",
+      "description": "After a spec task completes, reviews the implementation against store-operations domain rules: inventory consistency, transaction idempotency, and POS integration contracts.",
+      "action": {
+        "type": "agent",
+        "prompt": "A spec task just completed in a store-operations repository. Review the changes made during this task against store-operations domain standards.\n\n1. **Identify changed files**: Run `git diff --name-only` and `git diff --name-only --cached`.\n\n2. **Domain rule checks** — for each modified file:\n   - **Inventory consistency**: Any method that updates stock levels must do so inside a transaction and must not leave inventory in a negative state. Flag any direct field mutations outside a transactional boundary.\n   - **Idempotency**: Operations triggered by POS events (sales, returns, voids) must be idempotent. Check that event handlers guard against duplicate message processing (e.g. via an idempotency key or processed-event store).\n   - **POS integration contracts**: If any DTO, event payload, or API response schema was changed, confirm the change is backward-compatible with the POS integration contract. Flag any field removals or type changes.\n   - **Audit trail**: Any state-changing operation on an order or inventory record must write an audit log entry. Flag missing audit writes.\n\n3. **Summary**: List each violation found with the file name, line reference, and a one-sentence fix recommendation. If no violations are found, confirm the changes comply with store-operations standards."
+      }
+    }
+  ]
+}
