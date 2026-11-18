@@ -60,9 +60,9 @@ _RESERVED = "__NO_MATCH__"
 
 PRODUCT_LINE_URL_MAP: dict[str, str] = {
     # ── Configured ────────────────────────────────────────────────────────────
-    # Replace the placeholder URL prefix with the real GitLab/GitHub group path
-    # for store-operations repos, e.g. "gitlab.example.com/retail/store-ops/"
-    "STORE_OPS_URL_PREFIX_PLACEHOLDER/": "store-operations",
+    # All repos under github.com/MahimaMohana/ map to the store-operations
+    # product line for testing. Update to the real org/group prefix in production.
+    "github.com/MahimaMohana/": "store-operations",
 
     # ── Reserved — update URL prefix when group is known ─────────────────────
     _RESERVED + "/data-and-platform":              "data-and-platform",
